@@ -1,61 +1,51 @@
 import tensorflow as tf
 from tensorflow import keras
+import os,sys,numpy as np
+from tensorflow.keras.layers import Input,Dense,Concatenate
+from tensorflow.keras.models import Model
 from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
-import numpy as np
-
-from utils import get_fashion_mnist_data
 
 
 def main():
 
     tf.random.set_seed(seed=0)
 
-    # Get data
-    (train_images, train_labels), (test_images,
-                                   test_labels) = get_fashion_mnist_data()
-
-    # Create Keras model
-    model = keras.Sequential(layers=[
-        keras.layers.InputLayer(input_shape=(28, 28), name="input"),
-        keras.layers.Flatten(input_shape=(28, 28), name="flatten"),
-        keras.layers.Dense(128, activation="relu", name="dense"),
-        keras.layers.Dense(10, activation="softmax", name="output")
-    ],
-                             name="FCN")
+    a=Input(shape=(5,),name='a')
+    b=Input(shape=(10,),name='b')
+    a1=Dense(10)(a)
+    b1=Dense(10)(b)
+    c=Concatenate()([a1,b1])
+    d=Dense(2)(c)
+    model=Model(inputs=[a,b],outputs=[d])
+    model.compile(loss='mae',optimizer='adam')
+    model.summary()
+    input1=np.random.uniform(size=(100,5))
+    input2=np.random.uniform(size=(100,10))
+    label=np.random.uniform(size=(100,2))
 
     # Print model architecture
     model.summary()
 
     # Compile model with optimizer
     model.compile(optimizer="adam",
-                  loss="sparse_categorical_crossentropy",
+                  loss="mae",
                   metrics=["accuracy"])
 
     # Train model
-    model.fit(x=[train_images], y=[train_labels], epochs=1)
+    model.fit([input1,input2],label, epochs=1)
 
-    # Test model
-    test_loss, test_acc = model.evaluate(x=[test_images],
-                                         y=[test_labels],
-                                         verbose=2)
-    print("-" * 50)
-    print("Test accuracy: ")
-    print(test_acc)
-
-    # Get predictions for test images
-    predictions = model.predict(test_images)
-    # Print the prediction for the first image
-    print("-" * 50)
-    print("Example prediction reference:")
-    print(predictions[0])
-
+    # Save model to h5 format
+    model.save("model.hdf5")
     # Save model to SavedModel format
-    tf.saved_model.save(model, "./models")
+    model.save("model.tf")
 
     # Convert Keras model to ConcreteFunction
-    full_model = tf.function(lambda x: model(x))
-    full_model = full_model.get_concrete_function(
-        tf.TensorSpec(model.inputs[0].shape, model.inputs[0].dtype))
+    @tf.function
+    def nn(*args):
+        return model(args)
+    full_model = nn.get_concrete_function(
+        [tf.TensorSpec(model.inputs[0].shape, model.inputs[0].dtype,name='a'),
+         tf.TensorSpec(model.inputs[1].shape, model.inputs[1].dtype,name='b')])
 
     # Get frozen ConcreteFunction
     frozen_func = convert_variables_to_constants_v2(full_model)
@@ -75,7 +65,7 @@ def main():
 
     # Save frozen graph from frozen ConcreteFunction to hard drive
     tf.io.write_graph(graph_or_graph_def=frozen_func.graph,
-                      logdir="./frozen_models",
+                      logdir="./",
                       name="frozen_graph.pb",
                       as_text=False)
 
